@@ -2,9 +2,11 @@ LINUX_PROJECT = linux
 WINDOWS_PROJECT = windows
 MAC_PROJECT = mac
 
+SWITCH_PROJECT = switch
+
 ICONS_FOLDER = icons
 
-all: linux windows
+all: switch
 # The mac target requires an actual Mac
 
 linux:
@@ -12,6 +14,12 @@ linux:
 
 linux-clean:
 	@$(MAKE) -C $(LINUX_PROJECT) clean-all
+
+switch:
+	@$(MAKE) -C $(SWITCH_PROJECT) all
+
+switch-clean:
+	@$(MAKE) -C $(SWITCH_PROJECT) clean
 
 windows:
 	@$(MAKE) -C $(WINDOWS_PROJECT) dist
@@ -28,6 +36,6 @@ mac-clean:
 icons:
 	@$(MAKE) -C $(ICONS_FOLDER) install
 
-clean: linux-clean windows-clean
+clean: switch-clean
 
-.PHONY: all linux linux-clean windows windows-clean mac mac-clean icons clean
+.PHONY: all switch-clean switch linux linux-clean windows windows-clean mac mac-clean icons clean

@@ -20,7 +20,11 @@
 #ifndef _STATE_H_
 #define _STATE_H_
 
-#define STATE_TEMPLATE			"save%u.bin"
+#ifndef __SWITCH__
+#define STATE_TEMPLATE          "save%u.bin"
+#elif defined(__SWITCH__)
+#define STATE_TEMPLATE          "sdmc:/switch/tamatool-nx/save/save%u.bin"
+#endif
 
 
 void state_find_next_name(char *path);

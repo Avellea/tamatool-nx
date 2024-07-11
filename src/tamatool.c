@@ -31,6 +31,12 @@
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
+
+// Switch specific
+#elif defined(__SWITCH__)
+#include <dirent.h>
+#include <switch.h>
+uint32_t nxslotnum;
 #endif
 
 #include "SDL.h"
@@ -42,60 +48,61 @@
 #include "state.h"
 #include "mem_edit.h"
 
-#define APP_NAME			"TamaTool"
-#define APP_VERSION			"0.1" // Major, minor
-#define COPYRIGHT_DATE			"2021"
-#define AUTHOR_NAME			"Jean-Christophe Rona"
+#define APP_NAME					"TamaTool"
+#define APP_VERSION					"0.1" // Major, minor
+#define COPYRIGHT_DATE				"2021"
+#define AUTHOR_NAME					"Jean-Christophe Rona"
+#define PORT_AUTHOR_NAME			"Avellea"
 
-#define ROM_PATH			"rom.bin"
+#define ROM_PATH					"sdmc:/switch/tamatool-nx/rom.bin"
 
-#define ROM_NOT_FOUND_TITLE		"Tamagotchi ROM not found"
-#define ROM_NOT_FOUND_MSG		"You need to place a Tamagotchi P1 ROM called \"rom.bin\" inside TamaTool's folder/package first !"
+#define ROM_NOT_FOUND_TITLE			"Tamagotchi ROM not found"
+#define ROM_NOT_FOUND_MSG			"You need to place a Tamagotchi P1 ROM called \"rom.bin\" inside TamaTool's folder/package first !"
 
-#define REF_BACKGROUND_SIZE		345
+#define REF_BACKGROUND_SIZE			345
 #define REF_BACKGROUND_OFFSET_X		148
 #define REF_BACKGROUND_OFFSET_Y		284
 
-#define REF_SHELL_WIDTH			634
-#define REF_SHELL_HEIGHT		816
+#define REF_SHELL_WIDTH				634
+#define REF_SHELL_HEIGHT			816
 
-#define REF_LCD_SIZE			321
-#define REF_LCD_OFFSET_X		12
-#define REF_LCD_OFFSET_Y		93
+#define REF_LCD_SIZE				321
+#define REF_LCD_OFFSET_X			12
+#define REF_LCD_OFFSET_Y			93
 
-#define ICON_SRC_SIZE			64
+#define ICON_SRC_SIZE				64
 
-#define REF_ICON_DEST_SIZE		64
-#define REF_ICON_OFFSET_X		35
-#define REF_ICON_OFFSET_Y		25
-#define REF_ICON_STRIDE_X		71
-#define REF_ICON_STRIDE_Y		242
+#define REF_ICON_DEST_SIZE			64
+#define REF_ICON_OFFSET_X			35
+#define REF_ICON_OFFSET_Y			25
+#define REF_ICON_STRIDE_X			71
+#define REF_ICON_STRIDE_Y			242
 
-#define REF_BUTTONS_X			182
-#define REF_BUTTONS_Y			716
-#define REF_BUTTONS_WIDTH		278
-#define REF_BUTTONS_HEIGHT		88
+#define REF_BUTTONS_X				182
+#define REF_BUTTONS_Y				716
+#define REF_BUTTONS_WIDTH			278
+#define REF_BUTTONS_HEIGHT			88
 
-#define REF_PIXEL_PADDING		1
+#define REF_PIXEL_PADDING			1
 
 #define DEFAULT_PIXEL_STRIDE		10
 
-#define PIXEL_STRIDE_MIN		1
-#define PIXEL_STRIDE_MAX		30
+#define PIXEL_STRIDE_MIN			1
+#define PIXEL_STRIDE_MAX			30
 
 #define DEFAULT_LCD_ALPHA_ON		255
 #define DEFAULT_LCD_ALPHA_OFF		20
 
-#define RES_PATH			"./res"
-#define BACKGROUND_PATH			RES_PATH"/background.png"
-#define SHELL_PATH			RES_PATH"/shell.png"
-#define ICONS_PATH			RES_PATH"/icons.png"
+#define RES_PATH					"romfs:/res"
+#define BACKGROUND_PATH				RES_PATH"/background.png"
+#define SHELL_PATH					RES_PATH"/shell.png"
+#define ICONS_PATH					RES_PATH"/icons.png"
 
-#define AUDIO_FREQUENCY			48000
-#define AUDIO_SAMPLES			480 // 10 ms @ 48000 Hz
-#define AUDIO_VOLUME			0.2f
+#define AUDIO_FREQUENCY				48000
+#define AUDIO_SAMPLES				480 // 10 ms @ 48000 Hz
+#define AUDIO_VOLUME				0.2f
 
-#define MEM_FRAMERATE			30 // fps
+#define MEM_FRAMERATE				30 // fps
 
 /* Uncomment this line to be as close as possible
  * to a cycle-accurate emulation. The downside is that
@@ -138,14 +145,14 @@ static u8_t log_levels = LOG_ERROR | LOG_INFO;
 
 static emulation_speed_t speed = SPEED_1X;
 
-static timestamp_t mem_dump_ts = 0;
+// static timestamp_t mem_dump_ts = 0;
 
 static uint16_t pixel_stride = DEFAULT_PIXEL_STRIDE;
 static uint16_t shell_width, shell_height, bg_offset_x, bg_offset_y; // Offsets are relative to the shell (0, 0)
 static uint16_t bg_size, lcd_offset_x, lcd_offset_y, icon_dest_size, icon_offset_x, icon_offset_y, icon_stride_x, icon_stride_y, pixel_size; // Offsets are relative to the background (bg_offset_x, bg_offset_y)
 static uint16_t pixel_alpha_on, pixel_alpha_off, icon_alpha_on, icon_alpha_off;
 static uint16_t buttons_x, buttons_y, buttons_width, buttons_height;
-static bool_t shell_enable = 1;
+static bool_t shell_enable = 0;
 
 #if defined(__WIN32__)
 static LARGE_INTEGER counter_freq;
@@ -444,6 +451,7 @@ static int handle_sdl_events(SDL_Event *event)
 					break;
 
 				case SDLK_f:
+				tamaspeedup:
 					switch (speed) {
 						case SPEED_1X:
 							speed = SPEED_10X;
@@ -462,11 +470,13 @@ static int handle_sdl_events(SDL_Event *event)
 					break;
 
 				case SDLK_b:
+				tamasave:
 					state_find_next_name(save_path);
 					state_save(save_path);
 					break;
 
 				case SDLK_n:
+				tamaload:
 					state_find_last_name(save_path);
 					if (save_path[0]) {
 						state_load(save_path);
@@ -503,34 +513,90 @@ static int handle_sdl_events(SDL_Event *event)
 					break;
 
 				case SDLK_LEFT:
+				tamasetleft:
 					tamalib_set_button(BTN_LEFT, BTN_STATE_PRESSED);
 					break;
 
 				case SDLK_DOWN:
+				tamasetcenter:
 					tamalib_set_button(BTN_MIDDLE, BTN_STATE_PRESSED);
 					break;
 
 				case SDLK_RIGHT:
+				tamasetright:
 					tamalib_set_button(BTN_RIGHT, BTN_STATE_PRESSED);
 					break;
 			}
 			break;
+		
+		
 
 		case SDL_KEYUP:
 			switch (event->key.keysym.sym) {
 				case SDLK_LEFT:
+				tamaunsetleft:
 					tamalib_set_button(BTN_LEFT, BTN_STATE_RELEASED);
 					break;
 
 				case SDLK_DOWN:
+				tamaunsetcenter:
 					tamalib_set_button(BTN_MIDDLE, BTN_STATE_RELEASED);
 					break;
 
 				case SDLK_RIGHT:
+				tamaunsetright:
 					tamalib_set_button(BTN_RIGHT, BTN_STATE_RELEASED);
 					break;
 			}
 			break;
+
+		case SDL_CONTROLLERDEVICEADDED:
+			SDL_GameControllerOpen(event->cdevice.which);
+			break;
+
+        case SDL_CONTROLLERBUTTONDOWN:
+            switch (event->jbutton.button){
+                case SDL_CONTROLLER_BUTTON_X:
+                    goto tamasetleft;
+                case SDL_CONTROLLER_BUTTON_A:
+                    goto tamasetcenter;
+                case SDL_CONTROLLER_BUTTON_B:
+                    goto tamasetright;
+				// case SDL_CONTROLLER_BUTTON_Y:
+				// 	// goto tamashell;
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                    goto tamaspeedup;
+                case SDL_CONTROLLER_BUTTON_START:
+                    goto tamasave;
+                case SDL_CONTROLLER_BUTTON_BACK:
+					printf("%i",nxslotnum);
+                    goto tamaload;
+                case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                    if(nxslotnum <= 256)
+                        nxslotnum++;
+						printf("%i",nxslotnum);
+                    break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                    if(nxslotnum != 0)
+                        nxslotnum--;
+					printf("%i",nxslotnum);
+                    break;
+            }
+            break;
+
+        case SDL_CONTROLLERBUTTONUP:
+            switch (event->jbutton.button){
+                case SDL_CONTROLLER_BUTTON_X:
+                    goto tamaunsetleft;
+                case SDL_CONTROLLER_BUTTON_A:
+                    goto tamaunsetcenter;
+                case SDL_CONTROLLER_BUTTON_B:
+                    goto tamaunsetright;
+				case SDL_CONTROLLER_BUTTON_Y:
+					// goto tamashell;
+            }
+            break;
+
 	}
 
 	return 0;
@@ -539,16 +605,16 @@ static int handle_sdl_events(SDL_Event *event)
 static int hal_handler(void)
 {
 	SDL_Event event;
-	timestamp_t ts;
+	// timestamp_t ts;
 
-	if (memory_editor_enable) {
-		/* Dump memory @ 30 fps */
-		ts = hal_get_timestamp();
-		if (ts - mem_dump_ts >= 1000000/MEM_FRAMERATE) {
-			mem_dump_ts = ts;
-			mem_edit_update();
-		}
-	}
+	// if (memory_editor_enable) {
+	// 	/* Dump memory @ 30 fps */
+	// 	ts = hal_get_timestamp();
+	// 	if (ts - mem_dump_ts >= 1000000/MEM_FRAMERATE) {
+	// 		mem_dump_ts = ts;
+	// 		mem_edit_update();
+	// 	}
+	// }
 
 	while (SDL_PollEvent(&event)) {
 		if (handle_sdl_events(&event)) {
@@ -608,7 +674,7 @@ static void sdl_release(void)
 
 static bool_t sdl_init(void)
 {
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO) != 0) {
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
 		hal_log(LOG_ERROR, "Failed to initialize SDL: %s\n", SDL_GetError());
 		return 1;
 	}
@@ -618,6 +684,31 @@ static bool_t sdl_init(void)
 		SDL_Quit();
 		return 1;
 	}
+
+
+#ifdef __SWITCH__
+	// Set tamatool-nx directory for Switch
+	DIR* dir;
+
+	dir = opendir("sdmc:/switch/tamatool-nx/save");
+	if(dir == NULL) {
+		mkdir("sdmc:/switch/tamatool-nx/save", 0777);
+	} else {
+		printf("Directory exists");
+	}
+
+	SDL_Joystick* gGameController = NULL;
+	if(SDL_NumJoysticks() < 1) {
+		printf("WARN: No joysticks connected\n");
+	}
+
+	gGameController = SDL_JoystickOpen(0);
+	if(gGameController == NULL) {
+		printf("WARN: Unable to open game controller! SDL Error: %s\n", SDL_GetError());
+		
+	}
+
+#endif
 
 	window = SDL_CreateWindow(APP_NAME, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (shell_enable ? shell_width : bg_size), (shell_enable ? shell_height : bg_size), SDL_WINDOW_SHOWN);
 
@@ -691,7 +782,7 @@ void rom_not_found_msg(void)
 static void usage(FILE * fp, int argc, char **argv)
 {
 	fprintf(fp,
-		APP_NAME" v"APP_VERSION" - (C)"COPYRIGHT_DATE" "AUTHOR_NAME"\n\n"
+		APP_NAME" v"APP_VERSION" - (C)"COPYRIGHT_DATE" "AUTHOR_NAME" "PORT_AUTHOR_NAME"\n\n"
 		"Usage: %s [options]\n\n"
 		"Options:\n"
 		"\t-r | --rom <path>             The ROM file to use (default is %s)\n"
@@ -729,6 +820,17 @@ static const struct option long_options[] = {
 	{0, 0, 0, 0}
 };
 
+int initRomFS() {
+	Result rc = romfsInit();
+	if(R_FAILED(rc)) {
+		printf("romfsInit: %08X\n", rc);
+		return rc;
+	} else {
+		printf("romfs loaded!");
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	char rom_path[256] = ROM_PATH;
@@ -737,6 +839,10 @@ int main(int argc, char **argv)
 	bool_t gen_header = 0;
 	bool_t extract_sprites = 0;
 	bool_t modify_sprites = 0;
+
+	// consoleInit(NULL);
+
+	initRomFS();
 
 #if defined(__WIN32__)
 	QueryPerformanceFrequency(&counter_freq);
@@ -863,14 +969,14 @@ int main(int argc, char **argv)
 	if (memory_editor_enable) {
 		/* Logs are not compatible with the memory editor */
 		log_levels = LOG_ERROR;
-		mem_edit_configure_terminal();
+		// mem_edit_configure_terminal();
 	}
 
 	tamalib_mainloop();
 
-	if (memory_editor_enable) {
-		mem_edit_reset_terminal();
-	}
+	// if (memory_editor_enable) {
+	// 	mem_edit_reset_terminal();
+	// }
 
 	tamalib_release();
 

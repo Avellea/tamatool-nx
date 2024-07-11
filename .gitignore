@@ -8,3 +8,7 @@ linux/dist
 mac/dist
 mac/tamatool.icns
 icons/icon-*.*
+
+switch/tamatool-nx.*
+switch/build
+switch.lst
